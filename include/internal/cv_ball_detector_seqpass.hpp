@@ -5,6 +5,7 @@
 #error C++-only header
 #endif
 
+#include <string.h>
 #include <cassert>
 #include <cmath>
 #include <c6x.h>
@@ -22,8 +23,24 @@
 
 #warning Eliminate global var
 static uint64_t s_rgb888hsv[640*480];
+static int s_color[32][32][32];
 
+union U_Hsv8x3
+{
+    struct {
+      uint8_t h;
+      uint8_t s;
+      uint8_t v;
+      uint8_t none; //unused
+    } parts;
+    uint32_t whole;
+};
 
+enum Enum_Color {BLACK, WHITE, GREY, RED, ORANGE, YELLOW, GREEN, AQUA, BLUE, PURPLE};
+
+int img_width  = 320;
+int img_height = 240;
+int m_color[10];
 
 template <>
 class BallDetector<TRIK_VIDTRANSCODE_CV_VIDEO_FORMAT_YUV422, TRIK_VIDTRANSCODE_CV_VIDEO_FORMAT_RGB565X> : public CVAlgorithm
@@ -128,6 +145,23 @@ class BallDetector<TRIK_VIDTRANSCODE_CV_VIDEO_FORMAT_YUV422, TRIK_VIDTRANSCODE_C
         drawOutputPixelBound(_srcCol  , _srcRow-adj, widthBot, widthTop, heightBot, heightTop, _outImage, _rgb888);
         drawOutputPixelBound(_srcCol  , _srcRow+adj, widthBot, widthTop, heightBot, heightTop, _outImage, _rgb888);
       }
+    }
+
+    void __attribute__((always_inline)) fillImage(const TrikCvImageBuffer& _outImage, const uint32_t _rgb888)
+    {
+      const int32_t widthBot  = 0;
+      const int32_t widthTop  = m_inImageDesc.m_width-1;
+      const int32_t heightBot = 0;
+      const int32_t heightTop = m_inImageDesc.m_height-1;
+
+      for (int row = 0; row < 50; ++row)
+      {
+        for (int col = 0; col < 50; ++col)
+        {
+          drawOutputPixelBound(col, row, widthBot, widthTop, heightBot, heightTop, _outImage, _rgb888);
+        }
+      }
+
     }
 
     void __attribute__((always_inline)) drawRgbTargetHorizontalCenterLine(const int32_t _srcCol, 
@@ -324,13 +358,126 @@ void clasterizeImage()
           const bool det = detectHsvPixel(_loll(rgb888hsv), u64_hsv_range, u32_hsv_expect);
           targetPointsPerRow += det;
           targetPointsCol += det?srcCol:0;
-          writeOutputPixel(dstImageRow+dstCol, det?0x00ffff:_hill(rgb888hsv));
+          writeOutputPixel(dstImageRow+dstCol, _hill(rgb888hsv));
         }
         m_targetX      += targetPointsCol;
         m_targetY      += srcRow*targetPointsPerRow;
         m_targetPoints += targetPointsPerRow;
       }
     }
+
+    double mod(double a, double b)
+    {
+        while(a > b)
+        {
+            a -= b;
+        }
+        return a;
+    }
+
+    double sgn(double a)
+    {
+        return a >= 0 ? a: -a;
+    }
+
+  uint32_t get_img_color()
+  {
+    uint32_t rgb_result;
+
+    const uint64_t* restrict img = s_rgb888hsv;
+    int row_start_position = 90;
+    int row_finish_position = 150;
+    int column_start_position = 130;
+    int column_finish_position = 190;
+
+    U_Hsv8x3 pixel;
+    for(int row = row_start_position; row < row_finish_position; row++)
+      for(int column = column_start_position; column < column_finish_position; column++)
+      {
+        pixel.whole = _loll(img[row*img_width + column]);
+        int hc = (pixel.parts.h >> 3);
+        int sc = (pixel.parts.s >> 3);
+        int vc = (pixel.parts.v >> 3);
+        s_color[hc][sc][vc]++;
+     }
+
+      int max = 0;
+      int max_hi;
+      int max_si;
+      int max_vi;
+
+      for(int h = 0; h < 32; h++)
+      {
+        for(int s = 0; s < 32; s++)
+        {
+          for(int v = 0; v < 32; v++)
+          {
+              if(s_color[h][s][v] > max)
+              {
+                max = s_color[h][s][v];
+                max_hi = h << 3;
+                max_si = s << 3;
+                max_vi = v << 3;
+              }
+          }
+        }
+      }
+
+      double max_h = static_cast<double>(max_hi)*360.0f/256.0f;
+      double max_s = static_cast<double>(max_si)/256.0f;
+      double max_v = static_cast<double>(max_vi)/256.0f;
+      double r;
+      double g;
+      double b;
+
+      double c = max_v*max_s;
+      double x = c*(1.0f-sgn(mod((max_h/60.0f),2.0f) - 1.0f));
+      double m = max_v - c;
+
+      if (max_h < 60)
+      {
+        r = c;
+        g = x;
+        b = 0;
+      } else if(max_h < 120)
+      {
+        r = x;
+        g = c;
+        b = 0;
+      } else if(max_h < 180)
+      {
+        r = 0;
+        g = c;
+        b = x;
+      } else if(max_h < 240)
+      {
+        r = 0;
+        g = x;
+        b = c;
+      } else if(max_h < 300)
+      {
+        r = x;
+        g = 0;
+        b = c;
+      } else if(max_h < 360)
+      {
+        r = c;
+        g = 0;
+        b = x;
+      }
+      
+    r = r + m;
+    g = g + m;
+    b = b + m;
+
+    uint8_t ri = static_cast<uint8_t>(r*256);
+    uint8_t gi = static_cast<uint8_t>(g*256);
+    uint8_t bi = static_cast<uint8_t>(b*256);
+
+    rgb_result = ((int32_t)ri << 16) + ((int32_t)gi << 8) + ((int32_t)bi);
+
+    return rgb_result;
+  }
 
 
   public:
@@ -388,6 +535,7 @@ void clasterizeImage()
       m_targetY = 0;
       m_targetPoints = 0;
 
+      memset(s_color, 0, sizeof(int)*32*32*32);
       uint32_t detectHueFrom = range<int32_t>(0, (static_cast<int32_t>(_inArgs.detectHueFrom) * 255) / 359, 255); // scaling 0..359 to 0..255
       uint32_t detectHueTo   = range<int32_t>(0, (static_cast<int32_t>(_inArgs.detectHueTo  ) * 255) / 359, 255); // scaling 0..359 to 0..255
       uint32_t detectSatFrom = range<int32_t>(0, (static_cast<int32_t>(_inArgs.detectSatFrom) * 255) / 100, 255); // scaling 0..100 to 0..255
@@ -414,37 +562,37 @@ void clasterizeImage()
       for (unsigned repeat = 0; repeat < DEBUG_REPEAT; ++repeat) {
 #endif
 
+
       if (m_inImageDesc.m_height > 0 && m_inImageDesc.m_width > 0)
       {
         convertImageYuyvToHsv(_inImage);
 
-        if (autoDetectHsv)
-        {
-          HsvRangeDetector rangeDetector = HsvRangeDetector();
-          rangeDetector.detect(_outArgs.detectHue, _outArgs.detectHueTolerance,
-                               _outArgs.detectSat, _outArgs.detectSatTolerance,
-                               _outArgs.detectVal, _outArgs.detectValTolerance,
-                               s_rgb888hsv);
-        }
-
         proceedImageHsv(_outImage);
+
       }
 
 #ifdef DEBUG_REPEAT
       } // repeat
 #endif
-
+      int32_t res_color = 0x000000;
+      res_color = get_img_color();
       //draw taget pointer
+      fillImage(_outImage, res_color);
+
       drawRgbTargetCenterLine(130, 120, _outImage, 0xff00ff);
       drawRgbTargetCenterLine(190, 120, _outImage, 0xff00ff);
+
+/*
       drawRgbTargetCenterLine(90,  120, _outImage, 0xff00ff);
       drawRgbTargetCenterLine(230, 120, _outImage, 0xff00ff);
-
+*/
       drawRgbTargetHorizontalCenterLine(160, 90, _outImage, 0xff00ff);
       drawRgbTargetHorizontalCenterLine(160, 150, _outImage, 0xff00ff);
+/*
       drawRgbTargetHorizontalCenterLine(160, 50, _outImage, 0xff00ff);
       drawRgbTargetHorizontalCenterLine(160, 190, _outImage, 0xff00ff);
-
+*/
+/*
       if (m_targetPoints > 0)
       {
         const int32_t targetX = m_targetX/m_targetPoints;
@@ -453,7 +601,7 @@ void clasterizeImage()
         assert(m_inImageDesc.m_height > 0 && m_inImageDesc.m_width > 0); // more or less safe since no target points would be detected otherwise
         const uint32_t targetRadius = std::ceil(std::sqrt(static_cast<float>(m_targetPoints) / 3.1415927f));
 
-        drawOutputCircle(targetX, targetY, targetRadius, _outImage, 0xffff00);
+//        drawOutputCircle(targetX, targetY, targetRadius, _outImage, 0xffff00);
 
         _outArgs.targetX = ((targetX - static_cast<int32_t>(m_inImageDesc.m_width) /2) * 100*2) / static_cast<int32_t>(m_inImageDesc.m_width);
         _outArgs.targetY = ((targetY - static_cast<int32_t>(m_inImageDesc.m_height)/2) * 100*2) / static_cast<int32_t>(m_inImageDesc.m_height);
@@ -465,7 +613,7 @@ void clasterizeImage()
         _outArgs.targetY = 0;
         _outArgs.targetSize = 0;
       }
-
+*/
       return true;
     }
 };
