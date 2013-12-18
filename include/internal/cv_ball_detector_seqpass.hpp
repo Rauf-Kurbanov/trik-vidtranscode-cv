@@ -23,7 +23,11 @@
 
 #warning Eliminate global var
 static uint64_t s_rgb888hsv[640*480];
-static int s_color[32][32][32];
+const int m = 256 / 8;    // partition of axis h in 32 parts
+const int n = 256 / 32;   // s in 8 parts
+const int k = 256 / 32;   // v in 8 parts
+
+static int c_color[m][n][k]; // massiv of clusters 32x8x8
 
 union U_Hsv8x3
 {
@@ -379,105 +383,184 @@ void clasterizeImage()
     {
         return a >= 0 ? a: -a;
     }
-
-  uint32_t get_img_color()
-  {
+/*
+uint32_t GetImgColor(uint32_t* img);
+uint32_t HSVtoRGB(int H, int S, int V);
+*/
+//Функция поиска доминирующего цвета на изображении
+uint32_t GetImgColor()
+{
     uint32_t rgb_result;
-
     const uint64_t* restrict img = s_rgb888hsv;
+
+    // values of hue, saturation and value are between 0 and 255
+
+    // hsv cube 256x256x256 -> many small clusters 32x8x8
+    int ch, cs, cv;
+
     int row_start_position = 90;
     int row_finish_position = 150;
     int column_start_position = 130;
     int column_finish_position = 190;
 
+    //fill out the massiv of clusters
     U_Hsv8x3 pixel;
     for(int row = row_start_position; row < row_finish_position; row++)
-      for(int column = column_start_position; column < column_finish_position; column++)
-      {
-        pixel.whole = _loll(img[row*img_width + column]);
-        int hc = (pixel.parts.h >> 3);
-        int sc = (pixel.parts.s >> 3);
-        int vc = (pixel.parts.v >> 3);
-        s_color[hc][sc][vc]++;
-     }
-
-      int max = 0;
-      int max_hi;
-      int max_si;
-      int max_vi;
-
-      for(int h = 0; h < 32; h++)
-      {
-        for(int s = 0; s < 32; s++)
+        for(int column = column_start_position; column < column_finish_position; column++)
         {
-          for(int v = 0; v < 32; v++)
-          {
-              if(s_color[h][s][v] > max)
-              {
-                max = s_color[h][s][v];
-                max_hi = h << 3;
-                max_si = s << 3;
-                max_vi = v << 3;
-              }
-          }
+        pixel.whole = _loll(img[row*img_width + column]);
+
+        if(pixel.parts.h == 0) ch = 0;
+        else ch = ceil(pixel.parts.h / 8) - 1;   // ceil - потолок
+
+        if(pixel.parts.s == 0) cs = 0;
+        else cs = ceil(pixel.parts.s / 32) - 1;
+
+        if(pixel.parts.v == 0) cv = 0;
+        else cv = ceil(pixel.parts.v / 32) - 1;
+
+        c_color[ch][cs][cv]++;
         }
-      }
 
-      double max_h = static_cast<double>(max_hi)*360.0f/256.0f;
-      double max_s = static_cast<double>(max_si)/256.0f;
-      double max_v = static_cast<double>(max_vi)/256.0f;
-      double r;
-      double g;
-      double b;
+    int ch_max = 0, cs_max = 0, cv_max = 0;
+    int max_number_of_pix = 0;
 
-      double c = max_v*max_s;
-      double x = c*(1.0f-sgn(mod((max_h/60.0f),2.0f) - 1.0f));
-      double m = max_v - c;
+    int i, j, l;
 
-      if (max_h < 60)
-      {
-        r = c;
-        g = x;
-        b = 0;
-      } else if(max_h < 120)
-      {
-        r = x;
-        g = c;
-        b = 0;
-      } else if(max_h < 180)
-      {
-        r = 0;
-        g = c;
-        b = x;
-      } else if(max_h < 240)
-      {
-        r = 0;
-        g = x;
-        b = c;
-      } else if(max_h < 300)
-      {
-        r = x;
-        g = 0;
-        b = c;
-      } else if(max_h < 360)
-      {
-        r = c;
-        g = 0;
-        b = x;
-      }
-      
-    r = r + m;
-    g = g + m;
-    b = b + m;
+    // find cluster with max number of pixels
+    for(i = 0; i < m; i++)
+        for(j = 0; j < n; j++)
+            for(l = 0; l < k; l++)
+            {
+                if(c_color[i][j][l] > max_number_of_pix)
+                {
+                    max_number_of_pix = c_color[i][j][l];
+                    ch_max = i;
+                    cs_max = j;
+                    cv_max = l;
+                }
+            }
 
-    uint8_t ri = static_cast<uint8_t>(r*256);
-    uint8_t gi = static_cast<uint8_t>(g*256);
-    uint8_t bi = static_cast<uint8_t>(b*256);
+    // return h, s and v as h_max, s_max and _max with values
+    // scaled to be between 0 and 255.
+    int h_max = ch_max * 8;
+    int s_max = cs_max * 32;
+    int v_max = cv_max * 32;
 
+    rgb_result = HSVtoRGB(h_max, s_max, v_max);
+
+    return rgb_result;
+}
+
+uint32_t HSVtoRGB(int H, int S, int V)
+{
+    // HSV contains values scaled as in the color wheel:
+    // that is, all from 0 to 255.
+
+    // for this code to work, Hue needs
+    // to be scaled from 0 to 360 (it is the angle of the selected
+    // point within the circle). Saturation and Value must be
+    // scaled to be between 0 and 1.
+
+    uint32_t rgb_result;
+
+    double h;
+    double s;
+    double v;
+
+    double r = 0;
+    double g = 0;
+    double b = 0;
+
+    // Scale Hue to be between 0 and 360. Saturation
+    // and value scale to be between 0 and 1.
+    h = (double)((int)((double) H / 255.0f * 360.0f) % 360);
+    s = (double) S / 255.0f;
+    v = (double) V / 255.0f;
+
+    if ( s == 0 )
+    {
+        // If s is 0, all colors are the same.
+        // This is some flavor of gray.
+        r = v;
+        g = v;
+        b = v;
+    }
+    else
+    {
+        double p;
+        double q;
+        double t;
+
+        double fractionalSector;
+        int sectorNumber;
+        double sectorPos;
+
+        // The color wheel consists of 6 sectors.
+        // Figure out which sector you are in.
+        sectorPos = h / 60.0f;
+        sectorNumber = (int)(floor(sectorPos));
+
+        // get the fractional part of the sector.
+        // That is, how many degrees into the sector are you?
+        fractionalSector = sectorPos - sectorNumber;
+
+        // Calculate values for the three axis of the color.
+        p = v * (1 - s);
+        q = v * (1 - (s * fractionalSector));
+        t = v * (1 - (s * (1 - fractionalSector)));
+
+        // Assign the fractional colors to r, g, and b
+        // based on the sector the angle is in.
+        switch (sectorNumber)
+        {
+        case 0:
+           r = v;
+           g = t;
+           b = p;
+           break;
+
+        case 1:
+           r = q;
+           g = v;
+           b = p;
+           break;
+
+        case 2:
+           r = p;
+           g = v;
+           b = t;
+           break;
+
+        case 3:
+           r = p;
+           g = q;
+           b = v;
+           break;
+
+        case 4:
+           r = t;
+           g = p;
+           b = v;
+           break;
+
+        case 5:
+           r = v;
+           g = p;
+           b = q;
+           break;
+        }
+    }
+
+    // return r, g and b as rgb_result with values scaled
+    // to be between 0 and 255.
+    int ri = r*255;
+    int gi = g*255;
+    int bi = b*255;
     rgb_result = ((int32_t)ri << 16) + ((int32_t)gi << 8) + ((int32_t)bi);
 
     return rgb_result;
-  }
+}
 
 
   public:
@@ -535,7 +618,7 @@ void clasterizeImage()
       m_targetY = 0;
       m_targetPoints = 0;
 
-      memset(s_color, 0, sizeof(int)*32*32*32);
+      memset(c_color, 0, sizeof(int)*m*n*k);
       uint32_t detectHueFrom = range<int32_t>(0, (static_cast<int32_t>(_inArgs.detectHueFrom) * 255) / 359, 255); // scaling 0..359 to 0..255
       uint32_t detectHueTo   = range<int32_t>(0, (static_cast<int32_t>(_inArgs.detectHueTo  ) * 255) / 359, 255); // scaling 0..359 to 0..255
       uint32_t detectSatFrom = range<int32_t>(0, (static_cast<int32_t>(_inArgs.detectSatFrom) * 255) / 100, 255); // scaling 0..100 to 0..255
@@ -575,7 +658,7 @@ void clasterizeImage()
       } // repeat
 #endif
       int32_t res_color = 0x000000;
-      res_color = get_img_color();
+      res_color = GetImgColor();
       //draw taget pointer
       fillImage(_outImage, res_color);
 
