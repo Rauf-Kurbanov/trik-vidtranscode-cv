@@ -411,13 +411,13 @@ uint32_t GetImgColor()
         pixel.whole = _loll(img[row*img_width + column]);
 
         if(pixel.parts.h == 0) ch = 0;
-        else ch = ceil(pixel.parts.h / 8) - 1;   // ceil - потолок
+        else ch = pixel.parts.h / 8;
 
         if(pixel.parts.s == 0) cs = 0;
-        else cs = ceil(pixel.parts.s / 32) - 1;
+        else cs = pixel.parts.s / 32;
 
         if(pixel.parts.v == 0) cv = 0;
-        else cv = ceil(pixel.parts.v / 32) - 1;
+        else cv = pixel.parts.v / 32;
 
         c_color[ch][cs][cv]++;
         }
