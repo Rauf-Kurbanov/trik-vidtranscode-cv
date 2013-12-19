@@ -458,13 +458,26 @@ class LineDetector<TRIK_VIDTRANSCODE_CV_VIDEO_FORMAT_YUV422, TRIK_VIDTRANSCODE_C
         //not draw but compute
         drawRgbTargetCenterLines(notEmptyLvlsNum, _outImage, 0xff0000);
 
-        //if notEmptyLvlsNum > 2
-        MlsApproximator mlsApproximator = MlsApproximator(m_targetYs, m_targetXs, notEmptyLvlsNum, 2);
-        mlsApproximator.approximate();
-        drawRgbFuncLine(drawY, &mlsApproximator, _outImage, 0xff0000);
+        if (notEmptyLvlsNum > 2)
+        {
+          MlsApproximator mlsApproximator = MlsApproximator(m_targetYs, m_targetXs, notEmptyLvlsNum, 2);
+          mlsApproximator.approximate();
+          drawRgbFuncLine(drawY, &mlsApproximator, _outImage, 0xff0000);
 
-        _outArgs.targetX = ((m_targetXs[0] - static_cast<int32_t>(m_inImageDesc.m_width) /2) * 100*2) / static_cast<int32_t>(m_inImageDesc.m_width);
-        _outArgs.targetSize = static_cast<XDAS_UInt32>(m_targetPoints*100*m_imageScaleCoeff)/inImagePixels;
+          _outArgs.targetX = ((m_targetXs[0] - static_cast<int32_t>(m_inImageDesc.m_width) /2) * 100*2) / static_cast<int32_t>(m_inImageDesc.m_width);
+        } 
+        else if (notEmptyLvlsNum == 2)
+        {
+          MlsApproximator mlsApproximator = MlsApproximator(m_targetYs, m_targetXs, notEmptyLvlsNum, 1);
+          mlsApproximator.approximate();
+          drawRgbFuncLine(drawY, &mlsApproximator, _outImage, 0xff0000);
+          _outArgs.targetX = ((m_targetXs[0] - static_cast<int32_t>(m_inImageDesc.m_width) /2) * 100*2) / static_cast<int32_t>(m_inImageDesc.m_width);
+        } 
+        else
+        {
+          _outArgs.targetX = ((m_targetXs[0] - static_cast<int32_t>(m_inImageDesc.m_width) /2) * 100*2) / static_cast<int32_t>(m_inImageDesc.m_width);
+        }
+        _outArgs.targetSize = static_cast<XDAS_UInt32>(targetPointsSum*100*m_imageScaleCoeff)/inImagePixels;
       }
       else
       {
@@ -472,14 +485,6 @@ class LineDetector<TRIK_VIDTRANSCODE_CV_VIDEO_FORMAT_YUV422, TRIK_VIDTRANSCODE_C
         _outArgs.targetSize = 0;
       }
 
-/*
-      assert(m_inImageDesc.m_height > 0 && m_inImageDesc.m_width > 0); // more or less safe since no target points would be detected otherwise
-
-      for (int l = 0; l < m_lvlsNum; l++)
-      { 
-        
-      }
-*/
       return true;
     }
 };
