@@ -73,11 +73,17 @@ class LineDetector<TRIK_VIDTRANSCODE_CV_VIDEO_FORMAT_YUV422, TRIK_VIDTRANSCODE_C
     {
       const int32_t srcCol = range<int32_t>(_srcColBot, _srcCol, _srcColTop);
       const int32_t srcRow = range<int32_t>(_srcRowBot, _srcRow, _srcRowTop);
+      const uint32_t srcToDstShift  = m_srcToDstShift;
 
+/*
       const int32_t dstRow = srcRow*1.33f;
       const int32_t dstCol = srcCol*0.75f;
+*/
+      const int32_t dstRow = srcRow >> srcToDstShift;
+      const int32_t dstCol = srcCol >> srcToDstShift;
 
       const uint32_t dstOfs = dstRow*m_outImageDesc.m_lineLength + dstCol*sizeof(uint16_t);
+
       writeOutputPixel(reinterpret_cast<uint16_t*>(_outImage.m_ptr+dstOfs), _rgb888);
     }
 
@@ -252,7 +258,7 @@ class LineDetector<TRIK_VIDTRANSCODE_CV_VIDEO_FORMAT_YUV422, TRIK_VIDTRANSCODE_C
 #pragma MUST_ITERATE(4, ,4)
       for (uint32_t srcRow=_inImageStartLvlRow; srcRow < _inImageFinishLvlRow; ++srcRow)
       {
-        const uint32_t dstRow = static_cast<double>(srcRow - m_inImageFirstRow/2) * 1.33f;
+        const uint32_t dstRow = (srcRow - m_inImageFirstRow/2) >> srcToDstShift;
         uint16_t* restrict dstImageRow = reinterpret_cast<uint16_t*>(_outImage.m_ptr + dstRow*dstLineLength);
 
         targetPointsPerRow = 0;
@@ -262,7 +268,7 @@ class LineDetector<TRIK_VIDTRANSCODE_CV_VIDEO_FORMAT_YUV422, TRIK_VIDTRANSCODE_C
 #pragma MUST_ITERATE(32, ,32)
         for (uint32_t srcCol=0; srcCol < width; ++srcCol)
         {
-          const uint32_t dstCol    = static_cast<double>(srcCol) * 0.75f;
+          const uint32_t dstCol    = srcCol >> srcToDstShift;
           const uint64_t rgb888hsv = *(rgb888hsvptr)++;
 
           const bool det = detectHsvPixel(_loll(rgb888hsv), u64_hsv_range, u32_hsv_expect);
