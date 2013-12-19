@@ -297,7 +297,7 @@ class LineDetector<TRIK_VIDTRANSCODE_CV_VIDEO_FORMAT_YUV422, TRIK_VIDTRANSCODE_C
 //#pragma MUST_ITERATE(m_lvlsNum, , m_lvlsNum)
       for(int lvlId = 0; lvlId < _lvlsNum; lvlId++)
       {
-        drawRgbTargetCenterLine(m_targetXs[lvlId], m_targetYs[lvlId], _outImage, 0xff0000);
+        drawRgbTargetCenterLine(m_targetXs[lvlId], m_targetYs[lvlId] - m_lvlHeight, _outImage, 0xff0000);
       }
     }
 
@@ -439,6 +439,7 @@ class LineDetector<TRIK_VIDTRANSCODE_CV_VIDEO_FORMAT_YUV422, TRIK_VIDTRANSCODE_C
 
       for(int lvlId = 0; lvlId < m_lvlsNum; lvlId++)
       {
+        tmpY += m_lvlHeight;
         if(m_targetPointss[lvlId] > 0)
         {
           targetPointsSum += m_targetPointss[lvlId];
@@ -446,7 +447,6 @@ class LineDetector<TRIK_VIDTRANSCODE_CV_VIDEO_FORMAT_YUV422, TRIK_VIDTRANSCODE_C
           m_targetYs[notEmptyLvlsNum] = tmpY;// + m_lvlHeight/2;
           notEmptyLvlsNum++;
         }
-        tmpY += m_lvlHeight;
       }
 
       if (targetPointsSum > 0)
