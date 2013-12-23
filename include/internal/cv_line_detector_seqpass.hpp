@@ -455,7 +455,7 @@ class LineDetector<TRIK_VIDTRANSCODE_CV_VIDEO_FORMAT_YUV422, TRIK_VIDTRANSCODE_C
         }
       }
 
-      if (targetPointsSum > 0)
+      if (targetPointsSum > 10)
       {
         const int32_t inImagePixels = m_inImageDesc.m_height * m_inImageDesc.m_width;
 
@@ -470,7 +470,8 @@ class LineDetector<TRIK_VIDTRANSCODE_CV_VIDEO_FORMAT_YUV422, TRIK_VIDTRANSCODE_C
           mlsApproximator.approximate();
           drawRgbFuncLine(drawY, &mlsApproximator, _outImage, 0xff0000);
 
-          _outArgs.targetX = ((m_targetXs[0] - static_cast<int32_t>(m_inImageDesc.m_width) /2) * 100*2) / static_cast<int32_t>(m_inImageDesc.m_width);
+          _outArgs.targetX = ((mlsApproximator.foo(0) - static_cast<int32_t>(m_inImageDesc.m_width) /2) * 100*2) / static_cast<int32_t>(m_inImageDesc.m_width);
+          _outArgs.targetY = mlsApproximator.angle();
         } 
         else if (notEmptyLvlsNum == 2)
         {
@@ -478,16 +479,19 @@ class LineDetector<TRIK_VIDTRANSCODE_CV_VIDEO_FORMAT_YUV422, TRIK_VIDTRANSCODE_C
           mlsApproximator.approximate();
           drawRgbFuncLine(drawY, &mlsApproximator, _outImage, 0xff0000);
           _outArgs.targetX = ((m_targetXs[0] - static_cast<int32_t>(m_inImageDesc.m_width) /2) * 100*2) / static_cast<int32_t>(m_inImageDesc.m_width);
+          _outArgs.targetY = 0;
         } 
         else
         {
           _outArgs.targetX = ((m_targetXs[0] - static_cast<int32_t>(m_inImageDesc.m_width) /2) * 100*2) / static_cast<int32_t>(m_inImageDesc.m_width);
+          _outArgs.targetY = 0;
         }
         _outArgs.targetSize = static_cast<XDAS_UInt32>(targetPointsSum*100*m_imageScaleCoeff)/inImagePixels;
       }
       else
       {
         _outArgs.targetX = 0;
+        _outArgs.targetY = 0;
         _outArgs.targetSize = 0;
       }
 
