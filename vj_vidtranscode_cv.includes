@@ -1,0 +1,6 @@
+.
+arm_client/include/internal
+dsp_server/package
+dsp_server/package/cfg/bin
+include/internal
+package
