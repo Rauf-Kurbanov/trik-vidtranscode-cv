@@ -5,7 +5,6 @@
 #include <stdlib.h>
 #include "image.h"
 #include <vector>
-#include "stdio-wrapper.h"
 
 #define MAXLABELS 50
 
@@ -77,7 +76,7 @@ void releaseTextClassifier();
 void groupRectangles(std::vector<MyRect>& _vec, int groupThreshold, float eps);
 
 /* draw white bounding boxes around detected faces */
-void drawRectangle(MyImage* image, MyRect r);
+//void drawRectangle(MyImage* image, MyRect r);
 
 //void detectObjects( MyImage* image, MySize minSize, MySize maxSize,
 //		myCascade* cascade, MyRect *result,

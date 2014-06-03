@@ -13,7 +13,20 @@
 #include "trik_vidtranscode_cv.h"
 #include "internal/cv_hsv_range_detector.hpp"
 
+///=============================================================================
+#include <stdio.h>
+#include <stdlib.h>
+#include <internal/image.h>
+#include <internal/haar.hpp>
+#include <internal/global_stuff.h>
+#include <internal/image.h>
+#include <internal/haar.hpp>
 
+//#define INPUT_FILENAME "Face.pgm"
+//#define OUTPUT_FILENAME "Output.pgm"
+
+using namespace std;
+///=============================================================================
 /* **** **** **** **** **** */ namespace trik /* **** **** **** **** **** */ {
 
 /* **** **** **** **** **** */ namespace cv /* **** **** **** **** **** */ {
@@ -263,6 +276,75 @@ class BallDetector<TRIK_VIDTRANSCODE_CV_VIDEO_FORMAT_YUV422, TRIK_VIDTRANSCODE_C
       }
     }
 
+    ///
+    void DEBUG_INLINE readIntegralImage(const TrikCvImageBuffer& _inImage, MyImage* image, unsigned char* inputData)
+    {
+      int ind = 0; // index for data array
+      const uint32_t srcImageRowEffectiveSize       = m_inImageDesc.m_width*sizeof(uint16_t);
+      const uint32_t srcImageRowEffectiveToFullSize = m_inImageDesc.m_lineLength - srcImageRowEffectiveSize;
+      image->width = m_inImageDesc.m_width; /// place to hardcode
+      image->height = m_inImageDesc.m_height;
+      const int8_t* restrict srcImageRow      = _inImage.m_ptr;
+      const int8_t* restrict srcImageTo       = srcImageRow + m_inImageDesc.m_lineLength*m_inImageDesc.m_height;
+      uint64_t* restrict rgb888hsvptr         = s_rgb888hsv;
+
+
+
+      assert(m_inImageDesc.m_height % 4 == 0); // verified in setup
+#pragma MUST_ITERATE(4, ,4)
+      while (srcImageRow != srcImageTo)
+      {
+        assert(reinterpret_cast<intptr_t>(srcImageRow) % 8 == 0); // let's pray...
+        const uint64_t* restrict srcImageCol4 = reinterpret_cast<const uint64_t*>(srcImageRow);
+        srcImageRow += srcImageRowEffectiveSize;
+
+        assert(m_inImageDesc.m_width % 32 == 0); // verified in setup
+#pragma MUST_ITERATE(32/4, ,32/4)
+        while (reinterpret_cast<const int8_t*>(srcImageCol4) != srcImageRow)
+        {
+          const uint64_t yuyv2x = *srcImageCol4++;
+
+          const uint64_t rgb12 = convert2xYuyvToRgb888(_loll(yuyv2x));
+          *rgb888hsvptr++ = _itoll(_loll(rgb12), convertRgb888ToHsv(_loll(rgb12)));
+          *rgb888hsvptr++ = _itoll(_hill(rgb12), convertRgb888ToHsv(_hill(rgb12)));
+
+          const uint64_t rgb34 = convert2xYuyvToRgb888(_hill(yuyv2x));
+          *rgb888hsvptr++ = _itoll(_loll(rgb34), convertRgb888ToHsv(_loll(rgb34)));
+          *rgb888hsvptr++ = _itoll(_hill(rgb34), convertRgb888ToHsv(_hill(rgb34)));
+
+          // Getting values from YUV pixels for integral image
+          uint64_t mask = 0xff00000000000000;
+          mask = mask && yuyv2x;
+//          image->data[ind++] = (unsigned char) mask;
+          inputData [ind++] = (unsigned char) mask;
+
+          mask = 0x0000ff0000000000;
+          mask = mask && yuyv2x;
+          mask << 16;
+//          image->data[ind++] = (unsigned char) mask;
+          inputData [ind++] = (unsigned char) mask;
+
+
+          mask = 0x00000000ff000000;
+          mask = mask && yuyv2x;
+          mask << 32;
+//          image->data[ind++] = (unsigned char) mask;
+          inputData [ind++] = (unsigned char) mask;
+
+          mask = 0x000000000000ff00;
+          mask = mask && yuyv2x;
+          mask << 48;
+//          image->data[ind++] = (unsigned char) mask;
+          inputData [ind++] = (unsigned char) mask;
+
+        }
+        srcImageRow += srcImageRowEffectiveToFullSize;
+      }
+
+      /// init image
+      int flag = readPgm(inputData, image);
+    }
+
 void clasterizePixel(const uint32_t _hsv)
 {
 }
@@ -372,6 +454,33 @@ void clasterizeImage()
         }
       }
 
+      /// hey u, mb u shd initialaize your shit right here?
+      inputData = (unsigned char*)malloc(sizeof(unsigned char)*(320*240));;///
+      int flag;
+
+      int mode = 1;
+      int i;
+
+      /* detection parameters */
+      float scaleFactor = 1.2;
+      int minNeighbours = 1;
+
+//        MyImage imageObj;
+//        MyImage *image = &imageObj;
+
+//      myCascade cascadeObj;
+      myCascade *cascade = &cascadeObj;
+//      MySize minSize = {20, 20};
+//      MySize maxSize = {0, 0};
+
+      /* classifier properties */
+      cascade->n_stages = 25;
+      cascade->total_nodes = 2913;
+      cascade->orig_window_size.height = 24;
+      cascade->orig_window_size.width = 24;
+
+      readTextClassifier();
+
       return true;
     }
 
@@ -410,14 +519,18 @@ void clasterizeImage()
         m_detectExpected = 0x1;
       }
 
+      MyImage imageObj; ///
+      MyImage *image = &imageObj; ///
+//      unsigned char* inputData = (unsigned char*)malloc(sizeof(unsigned char)*(320*240));;///
+
 #ifdef DEBUG_REPEAT
       for (unsigned repeat = 0; repeat < DEBUG_REPEAT; ++repeat) {
 #endif
 
       if (m_inImageDesc.m_height > 0 && m_inImageDesc.m_width > 0)
       {
-        convertImageYuyvToHsv(_inImage);
-
+//        convertImageYuyvToHsv(_inImage);
+        readIntegralImage(_inImage, image, inputData); // convertImageYuyvToHsv + creating data array
         if (autoDetectHsv)
         {
           HsvRangeDetector rangeDetector = HsvRangeDetector();
@@ -435,25 +548,74 @@ void clasterizeImage()
 #endif
 
       //draw taget pointer
-      drawRgbTargetCenterLine(130, 120, _outImage, 0xff00ff);
-      drawRgbTargetCenterLine(190, 120, _outImage, 0xff00ff);
-      drawRgbTargetCenterLine(90,  120, _outImage, 0xff00ff);
-      drawRgbTargetCenterLine(230, 120, _outImage, 0xff00ff);
+//            drawRgbTargetCenterLine(130, 120, _outImage, 0xff00ff);
+//            drawRgbTargetCenterLine(190, 120, _outImage, 0xff00ff);
+//            drawRgbTargetCenterLine(90,  120, _outImage, 0xff00ff);
+//            drawRgbTargetCenterLine(230, 120, _outImage, 0xff00ff);
 
-      drawRgbTargetHorizontalCenterLine(160, 90, _outImage, 0xff00ff);
-      drawRgbTargetHorizontalCenterLine(160, 150, _outImage, 0xff00ff);
-      drawRgbTargetHorizontalCenterLine(160, 50, _outImage, 0xff00ff);
-      drawRgbTargetHorizontalCenterLine(160, 190, _outImage, 0xff00ff);
+//            drawRgbTargetHorizontalCenterLine(160, 90,, 0xff00ff);
+//            drawRgbTargetHorizontalCenterLine(160, 150, _outImage, 0xff00ff);
+//            drawRgbTargetHorizontalCenterLine(160, 50, _outImage, 0xff00ff);
+//            drawRgbTargetHorizontalCenterLine(160, 190, _outImage, 0xff00ff);
 
       if (m_targetPoints > 0)
       {
-        const int32_t targetX = m_targetX/m_targetPoints;
-        const int32_t targetY = m_targetY/m_targetPoints;
+//        const int32_t targetX = m_targetX/m_targetPoints;
+//        const int32_t targetY = m_targetY/m_targetPoints;
+          const int32_t targetX = rand() % 320;
+          const int32_t targetY = rand() % 240;
 
         assert(m_inImageDesc.m_height > 0 && m_inImageDesc.m_width > 0); // more or less safe since no target points would be detected otherwise
         const uint32_t targetRadius = std::ceil(std::sqrt(static_cast<float>(m_targetPoints) / 3.1415927f));
 
-        drawOutputCircle(targetX, targetY, targetRadius, _outImage, 0xffff00);
+//        drawOutputCircle(targetX, targetY, targetRadius, _outImage, 0xff3300);
+
+        ///====================
+//        int flag;
+
+//        int mode = 1;
+//        int i;
+
+//        /* detection parameters */
+//        float scaleFactor = 1.2;
+//        int minNeighbours = 1;
+
+////        MyImage imageObj;
+////        MyImage *image = &imageObj;
+
+//        myCascade cascadeObj;
+//        myCascade *cascade = &cascadeObj;
+//        MySize minSize = {20, 20};
+//        MySize maxSize = {0, 0};
+
+//        /* classifier properties */
+//        cascade->n_stages = 25;
+//        cascade->total_nodes = 2913;
+//        cascade->orig_window_size.height = 24;
+//        cascade->orig_window_size.width = 24;
+
+//        readTextClassifier();
+
+//        std::vector<MyRect> result;
+
+        result = detectObjects(image, minSize, maxSize, cascade, scaleFactor, minNeighbours);
+
+//        printf("\nDetected faces:\n");
+//        for(i = 0; i < result.size(); i++ )
+//        {
+//            MyRect r = result[i];
+//            drawRectangle(image, r);
+//            printf("%2d:  in (%3d, %3d) with size %d x %d\n", i + 1, r.x,  r.y, r.width, r.height);
+//        }
+
+        /* delete image and free classifier */
+//        releaseTextClassifier();
+
+
+//        freeImage(image);
+        ///=============================
+        /// for test
+        drawOutputCircle(targetX, targetY, targetRadius, _outImage, 0xff3300);
 
         _outArgs.targetX = ((targetX - static_cast<int32_t>(m_inImageDesc.m_width) /2) * 100*2) / static_cast<int32_t>(m_inImageDesc.m_width);
         _outArgs.targetY = ((targetY - static_cast<int32_t>(m_inImageDesc.m_height)/2) * 100*2) / static_cast<int32_t>(m_inImageDesc.m_height);
@@ -466,6 +628,9 @@ void clasterizeImage()
         _outArgs.targetSize = 0;
       }
 
+      ///========================================
+
+      /// ===================================
       return true;
     }
 };

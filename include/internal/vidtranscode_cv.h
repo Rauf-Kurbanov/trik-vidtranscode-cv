@@ -44,6 +44,8 @@ typedef struct TrikCvImageBuffer {
     TrikCvImageSize      m_size;
 } TrikCvImageBuffer;
 
+/// maby I should add here my buffer
+
 typedef TRIK_VIDTRANSCODE_CV_InArgsAlg  TrikCvAlgInArgs;
 
 typedef TRIK_VIDTRANSCODE_CV_OutArgsAlg TrikCvAlgOutArgs;
